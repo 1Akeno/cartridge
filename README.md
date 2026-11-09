@@ -1,97 +1,55 @@
 # Cartridge
 
-A guide to the best games on Nintendo Switch 2, Switch and every classic Nintendo system. Plain HTML, CSS and JavaScript, with no build step.
+**Find your next game. Every Nintendo system.**
 
-It ships with 240 hand-picked games. Add free IGDB (or RAWG) keys and it pulls in the full library (thousands of games) without ever exposing the keys to visitors.
+Cartridge is a fast, clean guide to Nintendo games, from Nintendo Switch 2 back to the NES. It combines a hand-picked selection of essential titles with a library of more than 11,000 games, so you can see at a glance what's worth playing on the system you own.
 
-## Run it
+**[Visit the site →](https://1akeno.github.io/cartridge/)**
 
-```bash
-python -m http.server 5173
-```
+---
 
-Then visit http://localhost:5173. You can also open `index.html` directly.
+## What you can do
 
-## Load the full game library
+**Browse by system**
+Switch 2, Switch, Wii U, Wii, 3DS, DS, GameCube, Nintendo 64, Game Boy Advance, Super Nintendo, Game Boy and NES. Switch 2 owners can include backward-compatible Switch games, and Switch owners can include classics available through Nintendo Switch Online.
 
-Your keys stay on your computer. A script downloads the games and saves them to `data/library.js`; the website only reads that file.
+**Find the good stuff fast**
+Every system opens with a rotating showcase of its best recent releases. Must-play games are marked throughout, and results can be sorted by recommendation, critic score, release date or title.
 
-### Option A: IGDB (recommended)
+**Search everything**
+Search by title, studio, genre or year. Accents and punctuation are ignored, so "pokemon" finds "Pokémon".
 
-1. Turn on two-factor authentication on a Twitch account (Twitch requires it to register apps).
-2. Go to https://dev.twitch.tv/console and click **Register Your Application**. Name: anything. OAuth Redirect URL: `http://localhost`. Category: Website Integration. Client type: Confidential.
-3. Click **Manage** on the new app. Copy the **Client ID**, then click **New Secret** and copy the secret.
-4. Copy `.env.example` to `.env` and fill in:
-   ```
-   IGDB_CLIENT_ID=your-client-id
-   IGDB_CLIENT_SECRET=your-secret
-   ```
+**Filter by genre**
+From RPGs and platformers to puzzle, racing and party games, with live counts for the selected system.
 
-### Option B: RAWG
+**Read up before you play**
+Each game has its own page with box art, a short description, developer, release date, critic score, player rating, play modes and similar games you might like, plus links to the Nintendo eShop and trailers.
 
-Get a key at https://rawg.io/apidocs and put `RAWG_API_KEY=your-key` in `.env`. (RAWG has had outages; IGDB is used if both are set.)
+**Keep a list**
+Save games you want to play and mark the ones you've finished. Your list stays in your browser, with no account needed.
 
-### Download
+**Get a recommendation**
+Not sure what to play? *Surprise me* picks a highly rated game from any mix of systems you choose. It can skip games you've already played or choose only from your Want to play list.
 
-```bash
-node scripts/fetch-library.mjs
-```
+**Share what you find**
+Every filter, search and game page has its own link.
 
-The first run downloads everything. Later runs only fetch new and changed games, so run it again whenever you want new releases. Use `--full` to rebuild from scratch. Refresh the site afterwards.
+---
 
-Optional settings in `.env`:
+## Design
 
-| Setting | Default | What it does |
-| --- | --- | --- |
-| `MIN_RATINGS` | 2 | IGDB: skips obscure games with fewer ratings than this (new and upcoming games are always kept). |
-| `MIN_ADDED` | 15 | RAWG: skips games fewer than this many RAWG users have added. |
-| `MAX_PAGES` | 150 | Safety cap on pages per run. |
+Cartridge follows a restrained, content-first visual style: neutral surfaces, clear typography, and translucent glass used only where content sits behind it. It supports light and dark mode, adapts to phones, tablets and desktops, and respects reduced-motion settings.
 
-### Keep it updated automatically (GitHub)
+## Always up to date
 
-If the site lives in a GitHub repository, `.github/workflows/refresh-library.yml` refreshes the library every day:
+The game library refreshes automatically every day, so new releases and updated scores appear without any manual work.
 
-1. Repository **Settings > Secrets and variables > Actions > New repository secret**. Add `IGDB_CLIENT_ID` and `IGDB_CLIENT_SECRET` (or `RAWG_API_KEY`).
-2. That's it. It runs daily at 06:00 UTC and commits `data/library.js` when something changed. You can also run it by hand from the **Actions** tab.
+## Credits
 
-Host the site with GitHub Pages (Settings > Pages > Deploy from branch) and new games appear on their own.
+- Game data, box art and descriptions for the full library from [IGDB](https://www.igdb.com).
+- Cover art and summaries for hand-picked games from [Wikipedia](https://en.wikipedia.org).
+- Hand-picked selections, must-play picks and blurbs are editorial. Their critic scores are approximate.
 
-### Keeping the key private
+---
 
-- `.env` is listed in `.gitignore`, so git won't upload it.
-- If you deploy by dragging the folder onto a host (Netlify Drop and similar), delete `.env` from the copy first.
-- The key is never written into `data/library.js` or any file the browser loads.
-
-## Features
-
-- **Systems:** filter by Switch 2, Switch, Wii U, Wii, 3DS, DS, GameCube, N64, GBA, SNES, Game Boy or NES. Your choice is remembered. Switch 2 can include Switch 1 games; Switch can include Switch Online classics.
-- **My List:** save games with the bookmark on any card, or mark them "Want to play" / "Played" in the detail view. Saved in your browser.
-- **Surprise me:** pick any mix of systems (or a preset like Switch family, Handhelds or Retro) and get a random good game. It can skip games you've played or pick only from your Want to play list.
-- **Search:** by title, studio, genre or year. Accents are ignored. Press `/` or `Ctrl/⌘ K`.
-- **Browse:** genre chips, a must-play filter, and sorting (recommended, top rated, newest, oldest, A to Z).
-- **Detail view:** Wikipedia summary, facts, player rating and modes (from IGDB or RAWG), eShop and trailer links, and similar games.
-- **Sharing:** filters live in the URL and each game has its own link (`#/game/<id>`).
-- Light, dark and automatic themes. Works on phones.
-
-## Files
-
-| Path | What it is |
-| --- | --- |
-| `data/games.js` | The hand-picked catalog: title, platforms, year, genres, developer, score, must-play flag, blurb |
-| `data/covers.js` | Generated box art URLs (from Wikipedia) |
-| `data/library.js` | Generated full library (empty until you run the script) |
-| `scripts/fetch-library.mjs` | Downloads the full library from IGDB or RAWG using your keys |
-| `scripts/fetch-covers.mjs` | Regenerates `data/covers.js` |
-| `assets/styles.css` | All styling |
-| `assets/app.js` | Filtering, rendering, My List, Surprise me, detail view |
-
-## Adding a hand-picked game
-
-1. Add an entry to `data/games.js`. If the English Wikipedia article title differs from the game title, set `wiki`.
-2. Run `node scripts/fetch-covers.mjs` to fetch its cover.
-
-Hand-picked games take priority over library entries with the same title, so they keep their blurb, box art and must-play flag.
-
-## Notes
-
-Critic scores for hand-picked games are approximate and were compiled by hand. Library scores and covers come from IGDB or RAWG. Cover art and summaries come from Wikipedia. This is a fan project and is not affiliated with Nintendo.
+<sub>Cartridge is an independent fan project and is not affiliated with, endorsed by or sponsored by Nintendo. All game titles, artwork and trademarks belong to their respective owners.</sub>
