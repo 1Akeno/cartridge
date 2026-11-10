@@ -8,7 +8,9 @@
   const PLATFORMS = window.PLATFORMS || [];
   const PMAP = Object.fromEntries(PLATFORMS.map((p) => [p.id, p]));
   const COVERS = window.COVERS || {};
-  const LIBRARY = window.LIBRARY && Array.isArray(window.LIBRARY.games) ? window.LIBRARY : null;
+  // The full library is large, so it loads after the hand-picked games are on screen.
+  let LIBRARY = null;
+  let libraryPending = true;
   const HERO_DURATION = 7000;
   const CHUNK = 60;
   const TODAY = new Date().toISOString().slice(0, 10);
@@ -59,16 +61,19 @@
   const BY_ID = new Map(GAMES.map((g) => [g.id, g]));
 
   // Full library downloaded by scripts/fetch-library.mjs (no API key in the browser).
-  if (LIBRARY) {
+  const igdbImg = (size, id) => `https://images.igdb.com/igdb/image/upload/t_${size}/${id}.jpg`;
+
+  function mergeLibrary(lib) {
     const byTitle = new Map(GAMES.map((g) => [norm(g.title), g]));
     const libImage = (i) => (!i ? null : i.startsWith("~/") ? "https://media.rawg.io/media/resize/640/-/" + i.slice(2) : i.startsWith("igdb:") ? null : i);
-    const libCover = (i) => (i && i.startsWith("igdb:") ? { src: `https://images.igdb.com/igdb/image/upload/t_cover_big_2x/${i.slice(5)}.jpg`, w: 528, h: 748 } : null);
-    for (const x of LIBRARY.games) {
+    const libCover = (i) => (i && i.startsWith("igdb:") ? { src: igdbImg("cover_big_2x", i.slice(5)), w: 528, h: 748, igdb: i.slice(5) } : null);
+    for (const x of lib.games) {
       if (!x.t || !x.p?.length) continue;
       const match = byTitle.get(norm(x.t));
       if (match) {
         Object.assign(match, { ext: x.id, modes: x.m || [], esrb: x.e, rating: x.r, ratingsCount: x.rc, added: x.a });
-        if (!match.cover) match.cover = libCover(x.i);
+        const c = !match.cover && libCover(x.i);
+        if (c) applyCover(match, c);
         continue;
       }
       let id = x.id;
@@ -105,11 +110,12 @@
     }
   }
 
-  const GENRES = (() => {
+  function computeGenres() {
     const counts = new Map();
     GAMES.forEach((g) => g.genres.forEach((x) => counts.set(x, (counts.get(x) || 0) + 1)));
     return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name]) => name);
-  })();
+  }
+  let GENRES = computeGenres();
 
   /* ======================================================================
      Persistence
@@ -149,7 +155,7 @@
   const state = {
     platform: validPlatform(params.get("p")) ? params.get("p") : (validPlatform(store.get("platform", "all")) ? store.get("platform", "all") : "all"),
     q: params.get("q") || "",
-    genre: GENRES.includes(params.get("g")) ? params.get("g") : "all",
+    genre: params.get("g") || "all", // checked against the full genre list once the library has loaded
     sort: SORTS.includes(params.get("sort")) ? params.get("sort") : store.get("sort", "recommended"),
     must: params.get("must") === "1",
     list: LISTS.includes(params.get("list")) ? params.get("list") : null,
@@ -253,9 +259,10 @@
   const wikiURL = (g) => "https://en.wikipedia.org/wiki/" + encodeURIComponent(g.key.replace(/ /g, "_"));
   const eshopURL = (g) => "https://www.nintendo.com/us/search/#q=" + encodeURIComponent(g.title);
   const trailerURL = (g) => "https://www.youtube.com/results?search_query=" + encodeURIComponent(`${g.title} trailer`);
-  const SOURCE = LIBRARY?.source === "IGDB"
+  const sourceFor = (lib) => (lib?.source === "IGDB"
     ? { name: "IGDB", home: "https://www.igdb.com", game: (id) => "https://www.igdb.com/games/" + encodeURIComponent(id) }
-    : { name: "RAWG", home: "https://rawg.io", game: (id) => "https://rawg.io/games/" + encodeURIComponent(id) };
+    : { name: "RAWG", home: "https://rawg.io", game: (id) => "https://rawg.io/games/" + encodeURIComponent(id) });
+  let SOURCE = sourceFor(null);
   const extURL = (g) => SOURCE.game(g.ext);
   const whenText = (g) => (g.upcoming ? (g.date ? `Coming ${fmtDate(g.date)}` : "Coming soon") : g.year ? String(g.year) : "");
 
@@ -266,7 +273,11 @@
   function artHTML(g, eager) {
     const loading = eager ? "eager" : "lazy";
     if (g.cover) {
-      return `<img class="art-fg" src="${esc(g.cover.src)}" alt="Cover art for ${esc(g.title)}" width="${g.cover.w}" height="${g.cover.h}" loading="${loading}" decoding="async">`;
+      // Cards are small: let the browser take the half-size cover unless the screen is dense enough to need more.
+      const srcset = g.cover.igdb
+        ? ` srcset="${igdbImg("cover_big", g.cover.igdb)} 264w, ${esc(g.cover.src)} 528w" sizes="(max-width: 640px) 46vw, 190px"`
+        : "";
+      return `<img class="art-fg"${srcset} src="${esc(g.cover.src)}" alt="Cover art for ${esc(g.title)}" width="${g.cover.w}" height="${g.cover.h}" loading="${loading}" decoding="async">`;
     }
     if (g.image) return `<img class="art-fill" src="${esc(g.image)}" alt="${esc(g.title)}" loading="${loading}" decoding="async">`;
     return fallbackArt(g);
@@ -365,14 +376,14 @@
   const backdrop = $("#sheetBackdrop");
   const sheet = $("#sheet");
 
-  $("#lede").textContent = LIBRARY
-    ? `${fmt(GAMES.length)} games from Switch 2 back to the NES, with ${GAMES.filter((g) => g.curated).length} hand-picked favorites. Filter by system, genre or what's worth your time.`
-    : `${GAMES.length} great games, from Switch 2 back to the NES. Filter by system, genre or what's worth your time.`;
-
-  if (LIBRARY) {
+  function updateIntro() {
+    $("#lede").textContent = LIBRARY
+      ? `${fmt(GAMES.length)} games from Switch 2 back to the NES, with ${GAMES.filter((g) => g.curated).length} hand-picked favorites. Filter by system, genre or what's worth your time.`
+      : `${GAMES.length} great games, from Switch 2 back to the NES. Filter by system, genre or what's worth your time.`;
+    if (!LIBRARY) return;
     const credit = $("#dataCredit");
     credit.hidden = false;
-    credit.innerHTML = `Full game library from <a href="${SOURCE.home}" target="_blank" rel="noopener">${SOURCE.name}</a>, updated ${esc(fmtDate(LIBRARY.updated.slice(0, 10)))}.`;
+    credit.innerHTML = `Full game library from <a href="${SOURCE.home}" target="_blank" rel="noopener">${SOURCE.name}</a>, updated ${esc(fmtDate(String(LIBRARY.updated || "").slice(0, 10) || TODAY))}.`;
   }
 
   /* ======================================================================
@@ -380,13 +391,27 @@
      ====================================================================== */
 
   function buildSegments() {
-    const counts = { all: GAMES.length };
-    PLATFORMS.forEach((p) => { counts[p.id] = GAMES.filter((g) => g.platforms.includes(p.id)).length; });
     const items = [{ id: "all", name: "All" }, ...PLATFORMS];
     segmented.insertAdjacentHTML("beforeend", items.map((p) =>
-      `<button class="seg" type="button" role="radio" data-p="${p.id}" aria-checked="false" tabindex="-1" aria-label="${esc(p.name)}, ${counts[p.id]} games">` +
-        `<span>${esc(p.name)}</span><span class="seg-count" aria-hidden="true">${fmt(counts[p.id])}</span>` +
+      `<button class="seg" type="button" role="radio" data-p="${p.id}" aria-checked="false" tabindex="-1">` +
+        `<span>${esc(p.name)}</span><span class="seg-count" aria-hidden="true" hidden></span>` +
       `</button>`).join(""));
+    updateSegmentCounts();
+  }
+
+  // Counts stay hidden until the full library is in, so they don't jump from a few hundred to thousands.
+  function updateSegmentCounts() {
+    const counts = { all: GAMES.length };
+    PLATFORMS.forEach((p) => { counts[p.id] = 0; });
+    GAMES.forEach((g) => g.platforms.forEach((p) => { if (p in counts) counts[p]++; }));
+    segmented.querySelectorAll(".seg").forEach((b) => {
+      const id = b.dataset.p;
+      const name = id === "all" ? "All" : PMAP[id].name;
+      const count = b.querySelector(".seg-count");
+      count.hidden = libraryPending;
+      count.textContent = libraryPending ? "" : fmt(counts[id]);
+      b.setAttribute("aria-label", libraryPending ? name : `${name}, ${counts[id]} games`);
+    });
   }
 
   function updateSegments(animate = true) {
@@ -575,7 +600,7 @@
     requestAnimationFrame(fillViewport);
 
     const n = currentList.length;
-    empty.hidden = n > 0;
+    empty.hidden = n > 0 || libraryPending;
     if (!n) {
       const listEmpty = state.list && !Object.keys(myList).length;
       $("#emptyTitle").textContent = listEmpty ? "Your list is empty" : "No games match";
@@ -587,8 +612,8 @@
 
     const where = state.platform === "all" ? (state.list ? "" : " across all systems") : ` on ${PMAP[state.platform].name}`;
     const noun = n === 1 ? "game" : "games";
-    resultCount.textContent = state.q.trim()
-      ? `${fmt(n)} ${n === 1 ? "result" : "results"} for “${state.q.trim()}”${where}`
+    resultCount.textContent = libraryPending ? "Loading the full library…" : state.q.trim()
+      ?`${fmt(n)} ${n === 1 ? "result" : "results"} for “${state.q.trim()}”${where}`
       : `${fmt(n)} ${noun}${where}`;
     syncURL();
   }
@@ -1159,6 +1184,7 @@
     let choice = from[from.length - 1];
     for (let i = 0; i < from.length; i++) { r -= weights[i]; if (r <= 0) { choice = from[i]; break; } }
     pickerHistory.push(choice.id);
+    if (choice.cover) new Image().src = choice.cover.src; // ready by the time the shuffle ends
 
     clearTimeout(pickerSpin);
     pickerResult.classList.add("is-spinning");
@@ -1167,7 +1193,7 @@
     const tick = () => {
       if (k < flips) {
         const g = from[Math.floor(Math.random() * from.length)];
-        const src = g.cover?.src || g.image;
+        const src = g.cover?.igdb ? igdbImg("cover_small", g.cover.igdb) : g.cover?.src || g.image;
         pickerResult.innerHTML = `<div class="pick pick-blur"><div class="pick-art"><img src="${esc(src)}" alt=""></div></div>`;
         k++;
         pickerSpin = setTimeout(tick, 40 + k * k * 2.5);
@@ -1323,7 +1349,7 @@
   }
 
   function applyCover(g, c) {
-    g.cover = { src: c.src, w: c.w, h: c.h };
+    g.cover = { src: c.src, w: c.w, h: c.h, igdb: c.igdb };
     const card = cardCache.get(g.id);
     if (!card) return;
     const art = card.querySelector(".art");
@@ -1331,6 +1357,54 @@
     art.classList.remove("is-loaded");
     art.insertAdjacentHTML("afterbegin", artHTML(g));
     wireArt(art, g);
+  }
+
+  /* ======================================================================
+     Full library (loaded after the first render)
+     ====================================================================== */
+
+  function libraryReady() {
+    libraryPending = false;
+    const lib = window.LIBRARY && Array.isArray(window.LIBRARY.games) ? window.LIBRARY : null;
+    if (lib) {
+      LIBRARY = lib;
+      SOURCE = sourceFor(lib);
+      mergeLibrary(lib);
+      GENRES = computeGenres();
+      rankCache.clear();
+    }
+    if (state.genre !== "all" && !GENRES.includes(state.genre)) state.genre = "all";
+
+    updateIntro();
+    updateSegmentCounts();
+    renderGenres();
+
+    // Re-render in place, keeping at least as many cards as before so the page doesn't jump.
+    const keep = rendered;
+    render(false);
+    while (rendered < Math.min(keep, currentList.length)) appendChunk(false);
+    updateSegments(false);
+
+    if (heroPicks().map((g) => g.id).join() !== heroItems.map((g) => g.id).join()) renderHero();
+    if (pickerOpen) updatePool();
+
+    if (sheetOpen && sheetGame) {
+      const top = $(".sheet-scroll", sheet).scrollTop;
+      const hadFocus = sheet.contains(document.activeElement);
+      fillSheet(sheetGame);
+      $(".sheet-scroll", sheet).scrollTop = top;
+      if (hadFocus) sheet.focus({ preventScroll: true });
+    } else {
+      const g = gameFromHash();
+      if (g) openSheet(g, { fromHistory: true });
+    }
+  }
+
+  function loadLibrary() {
+    const s = document.createElement("script");
+    s.src = "data/library.js";
+    s.onload = s.onerror = libraryReady;
+    document.head.append(s);
   }
 
   /* ======================================================================
@@ -1349,6 +1423,8 @@
 
   const initial = gameFromHash();
   if (initial) openSheet(initial, { fromHistory: true });
+
+  loadLibrary();
 
   if ("requestIdleCallback" in window) requestIdleCallback(hydrateMissingCovers);
   else setTimeout(hydrateMissingCovers, 1500);

@@ -13,6 +13,8 @@
   <link rel="preconnect" href="https://upload.wikimedia.org" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/styles.css">
+  <link rel="preload" href="data/library.js" as="script" fetchpriority="low">
+  <link rel="preconnect" href="https://images.igdb.com">
   <script>
     try { var t = localStorage.getItem("cartridge.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
   </script>
@@ -196,7 +198,6 @@
 
   <script src="data/games.js"></script>
   <script src="data/covers.js"></script>
-  <script src="data/library.js"></script>
   <script src="assets/app.js"></script>
 </body>
 </html>
