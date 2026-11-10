@@ -118,10 +118,6 @@ Cartridge helps you decide what to play next on Nintendo hardware. It pairs a ha
   <img src="docs/images/phones-light.webp" alt="Cartridge on phones: home, browsing and a game page" width="100%">
 </picture>
 
-## Design
-
-Cartridge follows a restrained, content-first visual style: neutral surfaces, clear typography, and translucent glass used only where content sits behind it. The box art does the talking. Every interaction is keyboard accessible and respects reduced-motion settings.
-
 ## Credits
 
 - Game data, box art and descriptions for the full library from [IGDB](https://www.igdb.com).
